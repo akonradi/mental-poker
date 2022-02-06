@@ -50,6 +50,12 @@ impl<D: DeckType> Card<D> {
 impl<D: DeckType> DeckPosition<D> {
     const MAX: Self = DeckPosition(D::SIZE - 1, PhantomData);
 
+    #[cfg(test)]
+    pub(crate) fn new(index: usize) -> Self {
+        assert!(index <= Self::MAX.into());
+        Self(index, PhantomData)
+    }
+
     /// Returns the position of the first card in the shuffled deck.
     pub fn start() -> Self {
         Self(0, PhantomData)
