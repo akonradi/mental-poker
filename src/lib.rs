@@ -1,8 +1,10 @@
 #![allow(incomplete_features)]
 #![feature(step_trait)]
 #![feature(generic_const_exprs)]
+#![feature(generic_associated_types)]
 
 pub(crate) mod deck;
+pub mod game;
 
 use derive_more::From;
 

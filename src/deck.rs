@@ -151,3 +151,15 @@ impl<D> std::fmt::Debug for DeckPosition<D> {
         f.debug_tuple("DeckPosition").field(&self.0).finish()
     }
 }
+
+#[cfg(test)]
+pub mod testutil {
+    use super::*;
+
+    #[derive(Hash, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+    pub enum FakeDeck {}
+
+    impl DeckType for FakeDeck {
+        const SIZE: usize = 10;
+    }
+}
