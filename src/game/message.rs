@@ -1,3 +1,5 @@
+use std::{hash::Hash, ops::Index};
+
 extern crate derive_more;
 use crate::*;
 
@@ -5,13 +7,13 @@ use super::AttestedCard;
 
 /// A token that, when it appears in a message, is visible to all players.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum PublicMessageToken<D: DeckType> {
+pub enum PublicMessageToken<D: DeckType, P = PlayerId> {
     /// Encodes the value of a card and any information required to prove to
     /// other players that the value was previously revealed to the local
     /// player.
     AttestedCard(AttestedCard<D>),
     /// Encodes an unambiguous reference to one of the players.
-    Player(PlayerId),
+    Player(P),
     /// Encodes a fixed-size value.
     ///
     /// Clients can use this to include arbitrary information in a message,
@@ -82,12 +84,12 @@ pub struct InputMessage<D: DeckType>(Vec<InputMessageToken<D>>);
 /// [`OutputMessage`] are de-obfuscated, as at the end of a game. The values
 /// correspond exactly to those of [`OutputMessageToken`].
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum RevealedMessageToken<D: DeckType> {
+pub enum RevealedMessageToken<D: DeckType, P = PlayerId> {
     /// Indicates a public token in the original output message.
-    Public(PublicMessageToken<D>),
+    Public(PublicMessageToken<D, P>),
     /// Indicates a token in the output message that was visible only to the
     /// specified player, but which is now revealed.
-    Private(PlayerId, PrivateMessageToken<D>),
+    Private(P, PrivateMessageToken<D>),
 }
 
 /// A complete public-only message.
@@ -95,16 +97,105 @@ pub enum RevealedMessageToken<D: DeckType> {
 /// Instances of this class are constructed by de-obfuscating an
 /// [`OutputMessage`].
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RevealedMessage<D: DeckType>(Vec<RevealedMessageToken<D>>);
+pub struct RevealedMessage<D: DeckType, P = PlayerId>(Vec<RevealedMessageToken<D, P>>);
 
 /// A de-obfuscated event in the public log.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum PublicEvent<D: DeckType> {
+pub enum PublicEvent<D: DeckType, P = PlayerId> {
     // Records that a message was sent.
-    Message(RevealedMessage<D>),
+    Message(RevealedMessage<D, P>),
     /// Records an attempt to reveal the card at the given position to the
     /// receiving player.
-    Reveal(DeckPosition<D>, PlayerId),
+    Reveal(DeckPosition<D>, P),
+}
+
+/// Convenience trait for converting from one player ID representation to another.
+///
+/// This can be used to, for example, convert from relative player IDs to
+/// absolute for purposes of comparing or persisting messages.
+pub trait MapPlayer<P: Hash + Eq + Copy> {
+    /// The type of the output after converting from the input ID type `P` to the output type `I`.
+    type Mapped<I>;
+
+    /// Converts and returns the output.
+    ///
+    /// Converts all instances of `P` into `I` using the conversion specified by `players`.
+    fn map_player<'p, I: Clone, M: Index<&'p P, Output = I>>(
+        &'p self,
+        players: &'p M,
+    ) -> Self::Mapped<I>
+    where
+        P: 'p;
+}
+
+impl<D: DeckType, P: Hash + Eq + Copy> MapPlayer<P> for PublicEvent<D, P> {
+    type Mapped<I> = PublicEvent<D, I>;
+
+    fn map_player<'p, I: Clone, M: Index<&'p P, Output = I>>(
+        &'p self,
+        players: &'p M,
+    ) -> Self::Mapped<I>
+    where
+        P: 'p,
+    {
+        match self {
+            PublicEvent::Message(m) => PublicEvent::Message(m.map_player(players)),
+            PublicEvent::Reveal(pos, p) => PublicEvent::Reveal(*pos, players[p].clone()),
+        }
+    }
+}
+
+impl<D: DeckType, P: Hash + Eq + Copy> MapPlayer<P> for RevealedMessage<D, P> {
+    type Mapped<I> = RevealedMessage<D, I>;
+
+    fn map_player<'p, I: Clone, M: Index<&'p P, Output = I>>(
+        &'p self,
+        players: &'p M,
+    ) -> Self::Mapped<I>
+    where
+        P: 'p,
+    {
+        let Self(tokens) = self;
+        let tokens = tokens
+            .into_iter()
+            .map(|t| match t {
+                RevealedMessageToken::Public(p) => {
+                    RevealedMessageToken::Public(p.map_player(players))
+                }
+                RevealedMessageToken::Private(p, t) => {
+                    RevealedMessageToken::Private(players[p].clone(), *t)
+                }
+            })
+            .collect();
+        RevealedMessage(tokens)
+    }
+}
+
+impl<D: DeckType, P: Hash + Eq + Copy> MapPlayer<P> for PublicMessageToken<D, P> {
+    type Mapped<I> = PublicMessageToken<D, I>;
+
+    fn map_player<'p, I: Clone, M: Index<&'p P, Output = I>>(
+        &'p self,
+        players: &'p M,
+    ) -> Self::Mapped<I> {
+        match self {
+            PublicMessageToken::Player(p) => PublicMessageToken::Player(players[p].clone()),
+            PublicMessageToken::AttestedCard(c) => PublicMessageToken::AttestedCard(*c),
+            PublicMessageToken::Value(v) => PublicMessageToken::Value(*v),
+        }
+    }
+}
+
+impl<P: Hash + Eq + Copy, T: MapPlayer<P>> MapPlayer<P> for (P, T) {
+    type Mapped<I> = (I, T::Mapped<I>);
+
+    fn map_player<'p, I: Clone, M: Index<&'p P, Output = I>>(
+        &'p self,
+        players: &'p M,
+    ) -> Self::Mapped<I> {
+        let (p, t) = self;
+        (players[p].clone(), t.map_player(players))
+    }
 }
 
 impl<D: DeckType> IntoIterator for OutputMessage<D> {
