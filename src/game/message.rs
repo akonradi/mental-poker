@@ -155,9 +155,7 @@ impl<D: DeckType, P: Hash + Eq + Copy> MapPlayer<P> for RevealedMessage<D, P> {
     where
         P: 'p,
     {
-        let Self(tokens) = self;
-        let tokens = tokens
-            .into_iter()
+        self.into_iter()
             .map(|t| match t {
                 RevealedMessageToken::Public(p) => {
                     RevealedMessageToken::Public(p.map_player(players))
@@ -166,8 +164,7 @@ impl<D: DeckType, P: Hash + Eq + Copy> MapPlayer<P> for RevealedMessage<D, P> {
                     RevealedMessageToken::Private(players[p].clone(), *t)
                 }
             })
-            .collect();
-        RevealedMessage(tokens)
+            .collect()
     }
 }
 
@@ -236,14 +233,38 @@ impl<D: DeckType> IntoIterator for InputMessage<D> {
     }
 }
 
-impl<D: DeckType> FromIterator<RevealedMessageToken<D>> for RevealedMessage<D> {
-    fn from_iter<T: IntoIterator<Item = RevealedMessageToken<D>>>(iter: T) -> Self {
+impl<'s, D: DeckType> IntoIterator for &'s InputMessage<D> {
+    type Item = &'s InputMessageToken<D>;
+    type IntoIter = impl Iterator<Item = Self::Item>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl<D: DeckType, P> FromIterator<RevealedMessageToken<D, P>> for RevealedMessage<D, P> {
+    fn from_iter<T: IntoIterator<Item = RevealedMessageToken<D, P>>>(iter: T) -> Self {
         Self(iter.into_iter().collect())
     }
 }
 
-impl<D: DeckType> From<RevealedMessage<D>> for PublicEvent<D> {
-    fn from(message: RevealedMessage<D>) -> Self {
+impl<D: DeckType, P> From<RevealedMessage<D, P>> for PublicEvent<D, P> {
+    fn from(message: RevealedMessage<D, P>) -> Self {
         Self::Message(message)
+    }
+}
+
+impl<D: DeckType, P> IntoIterator for RevealedMessage<D, P> {
+    type Item = RevealedMessageToken<D, P>;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl<'s, D: DeckType, P> IntoIterator for &'s RevealedMessage<D, P> {
+    type Item = &'s RevealedMessageToken<D, P>;
+    type IntoIter = impl Iterator<Item = Self::Item>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
     }
 }

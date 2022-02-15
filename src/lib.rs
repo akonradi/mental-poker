@@ -2,6 +2,8 @@
 #![feature(step_trait)]
 #![feature(generic_const_exprs)]
 #![feature(generic_associated_types)]
+#![feature(type_alias_impl_trait)]
+#![cfg_attr(test, feature(generic_arg_infer))]
 
 pub(crate) mod deck;
 pub mod game;

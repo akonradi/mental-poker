@@ -1,5 +1,6 @@
 pub mod log;
 pub mod message;
+pub mod trusting;
 
 use std::fmt::Debug;
 
@@ -89,7 +90,7 @@ pub trait TurnOrderProvider {
 pub trait GameType: Clone + Debug + Eq + PartialEq + PartialOrd + PartialEq + 'static {
     type Deck: DeckType + 'static;
     type Action: Into<OutputMessage<Self::Deck>> + Debug;
-    type MessageParseError: Debug;
+    type MessageParseError: Debug + std::error::Error;
     type Message: TryFrom<InputMessage<Self::Deck>, Error = Self::MessageParseError> + Debug;
 }
 
