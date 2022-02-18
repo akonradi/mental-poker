@@ -290,9 +290,9 @@ impl Bootstrap {
     }
 }
 
-impl TurnOrderProvider for Bootstrap {
+impl<'s> TurnOrderProvider for &'s Bootstrap {
     type Iter = impl Iterator<Item = PlayerId>;
-    fn turn_order(&self) -> Self::Iter {
+    fn turn_order(self) -> Self::Iter {
         let mut players: Vec<_> = self
             .players
             .iter()

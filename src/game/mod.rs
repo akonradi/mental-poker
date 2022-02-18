@@ -84,7 +84,7 @@ pub trait TurnOrderProvider {
     type Iter: Iterator<Item = PlayerId>;
 
     /// Returns an iterator over the players that yields them in turn order.
-    fn turn_order(&self) -> Self::Iter;
+    fn turn_order(self) -> Self::Iter;
 }
 
 pub trait GameType: Clone + Debug + Eq + PartialEq + PartialOrd + PartialEq + 'static {

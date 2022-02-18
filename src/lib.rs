@@ -7,6 +7,7 @@
 
 pub(crate) mod deck;
 pub mod game;
+pub mod util;
 
 use derive_more::From;
 

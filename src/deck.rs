@@ -45,6 +45,10 @@ impl<D: DeckType> Card<D> {
         }
         cards
     }
+
+    pub fn index(&self) -> usize {
+        self.0.into()
+    }
 }
 
 impl<D: DeckType> DeckPosition<D> {
@@ -64,6 +68,10 @@ impl<D: DeckType> DeckPosition<D> {
     /// Returns a range over all positions in the shuffled deck.
     pub fn positions() -> std::ops::RangeInclusive<Self> {
         Self::start()..=Self::MAX
+    }
+
+    pub fn index(&self) -> usize {
+        self.0.into()
     }
 }
 
