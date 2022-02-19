@@ -15,7 +15,7 @@ use nom::{
 use crate::{
     cards::GoFishDeck,
     game::{DealState, GameState, Hand, TurnState},
-    player::{OtherPlayerHands, PlayerHand},
+    player::{OtherPlayers, PlayerHand},
 };
 use mental_poker::{
     game::AttestedCard,
@@ -200,13 +200,16 @@ impl<G: CardGame> PlayerImpl<G> for CliPlayer {
             Running(Other(_), Awaiting(PlayerId::This, _)) => (),
             _ => return None,
         };
+        if state.game_over() {
+            return None;
+        }
         loop {
-            let other_players = OtherPlayerHands(
+            let other_players = OtherPlayers(
                 state
                     .players()
                     .filter_map(|(id, p)| match id {
                         PlayerId::This => None,
-                        Other(o) => Some((o, p.hand())),
+                        Other(o) => Some((o, p)),
                     })
                     .collect(),
             );
@@ -216,7 +219,16 @@ impl<G: CardGame> PlayerImpl<G> for CliPlayer {
                 self.hand.len(),
                 PlayerHand(&self.hand)
             );
-            println!("#   other player hands: {}", other_players);
+            let this_player = state
+                .players()
+                .find_map(|(id, p)| if *id == PlayerId::This { Some(p) } else { None })
+                .unwrap();
+            println!(
+                "# Your (local player {}'s) revealed count: {}",
+                self.index,
+                this_player.revealed().len(),
+            );
+            println!("#   other players: {}", other_players);
             println!("#   state: {}", state.state());
             println!(
                 "#   deck: {} cards left",

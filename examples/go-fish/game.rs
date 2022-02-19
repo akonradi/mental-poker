@@ -279,6 +279,10 @@ impl<Card> PlayerState<Card> {
     pub(crate) fn hand(&self) -> &Hand<Card> {
         &self.hand
     }
+
+    pub fn revealed(&self) -> &[AttestedGoFishCard] {
+        &self.revealed
+    }
 }
 
 impl<Card: GoFishStateCard> GoFishState<Card> {
@@ -311,6 +315,10 @@ impl<Card: GoFishStateCard> GoFishState<Card> {
 
     pub fn state(&self) -> &GameState {
         &self.state
+    }
+
+    pub fn game_over(&self) -> bool {
+        self.players.values().all(|p| p.hand.len() == 0) && self.draw.top() == None
     }
 
     pub fn top_of_deck(&self) -> Option<&DeckPosition<GoFishDeck>> {
@@ -512,6 +520,7 @@ impl<Card: GoFishStateCard> GoFishState<Card> {
                     if removed.len() == 0 {
                         self.state = Running(self.next_player(p), Playing);
                     } else {
+                        player.revealed.extend(cards.into_iter());
                         self.state = Running(p, Playing);
                     }
                     Ok(())
@@ -540,6 +549,7 @@ impl<Card: GoFishStateCard> GoFishState<Card> {
                     self.state = Running(self.next_player(p), Playing);
                     Ok(())
                 } else {
+                    player.revealed.extend(cards.into_iter());
                     self.state = Running(p, Playing);
                     Ok(())
                 }
@@ -561,6 +571,7 @@ impl<Card: GoFishStateCard> GoFishState<Card> {
                         self.state = Running(self.next_player(p), Playing);
                         Ok(())
                     } else {
+                        player.revealed.extend(cards.into_iter());
                         self.state = Running(p, Playing);
                         Ok(())
                     }
@@ -608,7 +619,7 @@ impl<Card: GoFishStateCard> GoFishState<Card> {
     }
 
     pub(crate) fn end_game(self) -> Result<DoneState, Self> {
-        if self.players.values().all(|p| p.hand.len() == 0) && self.draw.top() == None {
+        if self.game_over() {
             let turn_order = self.turn_order().collect();
             let revealed = self
                 .players
@@ -713,8 +724,8 @@ mod tests {
     use assert_matches::assert_matches;
     use mental_poker::game::trusting::Bootstrap;
 
-    use crate::{bootstrap_games, player::Player};
     use super::*;
+    use crate::{bootstrap_games, player::Player};
 
     #[test]
     fn must_go_fish_after_failed_ask() {

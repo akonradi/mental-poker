@@ -21,7 +21,7 @@ use crate::{
     },
     game::{
         ActionError, DoneState, DrawError, DrewError, GameState, GoFish, GoFishState, Hand,
-        RequestError, RevealError, TransferError, TurnState,
+        PlayerState, RequestError, RevealError, TransferError, TurnState,
     },
     message::{GameAction, GoFishAction, TransferAction},
 };
@@ -140,18 +140,29 @@ impl<'a> std::fmt::Display for PlayerHand<'a, UnknownCard> {
     }
 }
 
-struct OtherPlayerHands<'a>(HashMap<&'a OtherPlayerId, &'a Hand<UnknownCard>>);
+struct OtherPlayers<'a>(HashMap<&'a OtherPlayerId, &'a PlayerState<UnknownCard>>);
 
-impl<'a> std::fmt::Display for OtherPlayerHands<'a> {
+impl<'a> std::fmt::Display for OtherPlayers<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut keys = self.0.keys().collect::<Vec<_>>();
         keys.sort_by_key::<u8, _>(|o| (**o).into());
-        f.debug_list()
-            .entries(
-                keys.into_iter()
-                    .map(|k| format!("Player {}: {} cards", u8::from(*k), self.0[k].len())),
-            )
-            .finish()
+        let mut remaining_players = keys.len();
+        write!(f, "[")?;
+        for (id, player) in keys.into_iter().map(|k| (k, self.0[k])) {
+            write!(
+                f,
+                "Player {}: {} cards, {} revealed",
+                u8::from(*id),
+                player.hand().len(),
+                player.revealed().len()
+            )?;
+            remaining_players -= 1;
+
+            if remaining_players > 0 {
+                write!(f, ", ")?;
+            }
+        }
+        write!(f, "]")
     }
 }
 
