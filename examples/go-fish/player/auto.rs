@@ -7,7 +7,7 @@ use crate::{
     game::{DealState, GameState, Hand, TurnState},
 };
 use mental_poker::{
-    game::{CardGame},
+    game::CardGame,
     PlayerId::{self, *},
 };
 
@@ -18,7 +18,7 @@ use crate::{
     message::GoFishAction,
 };
 
-use super::{PlayerAction, PlayerImpl};
+use super::{PlayerImpl, PlayerAction, PlayerActionError};
 
 pub(crate) struct AutoPlayer {
     hand: Hand<AttestedGoFishCard>,
@@ -157,6 +157,10 @@ impl<G: CardGame> PlayerImpl<G> for AutoPlayer {
 
     fn hand(&self) -> &Hand<AttestedGoFishCard> {
         &self.hand
+    }
+
+    fn on_action_error(&mut self, _error: PlayerActionError) -> Box<dyn std::error::Error> {
+        unreachable!("AutoPlayer does not make mistakes")
     }
 }
 

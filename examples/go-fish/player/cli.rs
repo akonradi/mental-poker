@@ -30,7 +30,7 @@ use crate::{
     message::GoFishAction,
 };
 
-use super::{PlayerAction, PlayerImpl};
+use super::{PlayerAction, PlayerActionError, PlayerImpl};
 
 pub(crate) struct CliPlayer {
     index: u8,
@@ -155,7 +155,7 @@ impl CliPlayer {
                     Some(player_id) => state
                         .players()
                         .find_map(|(i, _)| match i {
-                            Other(o) if u8::from(o)  == player_id => Some(o),
+                            Other(o) if u8::from(o) == player_id => Some(o),
                             _ => None,
                         })
                         .ok_or(format!("not a valid player: {:?}", player_id))?,
@@ -251,6 +251,16 @@ impl<G: CardGame> PlayerImpl<G> for CliPlayer {
 
     fn hand(&self) -> &Hand<AttestedGoFishCard> {
         &self.hand
+    }
+
+    fn on_action_error(&mut self, error: PlayerActionError) -> Box<dyn std::error::Error> {
+        match error {
+            PlayerActionError::RejectedReveal(cards, e) => {
+                self.hand.extend(cards);
+                e.into()
+            }
+            PlayerActionError::Other(e) => e,
+        }
     }
 }
 

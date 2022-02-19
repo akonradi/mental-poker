@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
+    error::Error,
     fmt::Write,
 };
 
@@ -82,8 +83,15 @@ impl From<GoFishAction<(OtherPlayerId, Vec<AttestedGoFishCard>), OtherPlayerId>>
     }
 }
 
+#[derive(derive_more::From)]
+enum PlayerActionError {
+    RejectedReveal(Vec<AttestedGoFishCard>, ActionError<RevealError>),
+    Other(Box<dyn Error>),
+}
+
 trait PlayerImpl<G: CardGame> {
     fn action(&mut self, state: &mut GoFishState<UnknownCard>) -> Option<PlayerAction>;
+    fn on_action_error(&mut self, error: PlayerActionError) -> Box<dyn Error>;
     fn receive(&mut self, cards: Vec<AttestedGoFishCard>);
     fn drew(&mut self, card: AttestedGoFishCard);
     fn hand(&self) -> &Hand<AttestedGoFishCard>;
@@ -169,6 +177,17 @@ pub(crate) enum PlayerType {
     AutoCheating(usize),
 }
 
+#[derive(Debug, derive_more::From)]
+enum HandleResult {
+    DrawError(ActionError<DrawError>),
+    RevealError(Vec<AttestedGoFishCard>, ActionError<RevealError>),
+    RequestError(ActionError<RequestError>),
+    TransferError(ActionError<TransferError>),
+    ReceivedWrongRank(Rank),
+    ReceivedCards(Vec<AttestedGoFishCard>),
+    None,
+}
+
 impl<G: CardGame<Game = GoFish>> Player<G>
 where
     G::InputError: 'static,
@@ -213,15 +232,31 @@ where
             PlayingState::Borrowed => unreachable!(),
         };
         let action = match player.action(state) {
-            Some(action) => action,
+            Some(x) => x,
             None => return Ok(None),
         };
 
         match action {
             PlayerAction::Do(action) => {
-                Self::handle(state, player, PlayerId::This, action.clone().into())?;
-                let message = game.send(action).unwrap();
-                Ok(Some(message))
+                let handle_result = match Self::handle(state, PlayerId::This, action.clone().into())
+                {
+                    HandleResult::DrawError(e) => Err(PlayerActionError::Other(e.into())),
+                    HandleResult::RevealError(cards, e) => Err((cards, e).into()),
+                    HandleResult::RequestError(e) => Err(PlayerActionError::Other(e.into())),
+                    HandleResult::TransferError(e) => Err(PlayerActionError::Other(e.into())),
+                    HandleResult::ReceivedWrongRank(_) => {
+                        unreachable!("only for incoming messages")
+                    }
+                    HandleResult::ReceivedCards(_) => unreachable!("only for receiving"),
+                    HandleResult::None => Ok(()),
+                };
+                match handle_result {
+                    Err(e) => Err(player.on_action_error(e)),
+                    Ok(()) => {
+                        let message = game.send(action).unwrap();
+                        Ok(Some(message))
+                    }
+                }
             }
             PlayerAction::RevealCard(to, pos) => {
                 state.drew(to.into(), pos, UnknownCard {}).unwrap();
@@ -249,43 +284,44 @@ where
 
     fn handle(
         state: &mut GoFishState<UnknownCard>,
-        player: &mut Box<dyn PlayerImpl<G>>,
         from: PlayerId,
         action: GoFishAction<TransferAction, PlayerId>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> HandleResult {
         match action {
-            GoFishAction::Draw => {
-                state.draw(from.into())?;
-                Ok(())
-            }
-            GoFishAction::Reveal(cards) => match state.reveal(from.into(), &cards) {
-                Ok(_) => Ok(()),
-                Err(e) => {
-                    player.receive(cards);
-                    return Err(e.into());
-                }
+            GoFishAction::Draw => match state.draw(from.into()) {
+                Ok(()) => ().into(),
+                Err(e) => e.into(),
             },
-            GoFishAction::Request { to, rank } => Ok(state.request(from.into(), to, rank)?),
+            GoFishAction::Reveal(cards) => match state.reveal(from.into(), &cards) {
+                Ok(x) => x.into(),
+                Err(e) => (cards, e).into(),
+            },
+            GoFishAction::Request { to, rank } => match state.request(from.into(), to, rank) {
+                Ok(x) => x.into(),
+                Err(e) => e.into(),
+            },
             GoFishAction::Transfer(TransferAction::ToOther(to, num_cards)) => {
                 let mut moved = Vec::new();
                 moved.resize(num_cards, Default::default());
-                Ok(state.transfer(from.into(), to.into(), &moved)?)
+                match state.transfer(from.into(), to.into(), &moved) {
+                    Ok(x) => x.into(),
+                    Err(e) => e.into(),
+                }
             }
             GoFishAction::Transfer(TransferAction::ToSelf(cards)) => {
                 if let GameState::Running(PlayerId::This, TurnState::Awaiting(_, rank)) =
                     state.state()
                 {
                     if cards.iter().any(|c| c.rank() != *rank) {
-                        return Err(format!("wrong rank, expected {}", rank).into());
+                        return HandleResult::ReceivedWrongRank(*rank);
                     }
                 }
-                {
-                    let mut moved = Vec::new();
-                    moved.resize(cards.len(), Default::default());
-                    state.transfer(from.into(), PlayerId::This, &moved)?
+                let mut moved = Vec::new();
+                moved.resize(cards.len(), Default::default());
+                match state.transfer(from.into(), PlayerId::This, &moved) {
+                    Ok(()) => HandleResult::ReceivedCards(cards),
+                    Err(e) => e.into(),
                 }
-                player.receive(cards);
-                Ok(())
             }
         }
     }
@@ -305,9 +341,21 @@ where
             PlayingState::Borrowed => unreachable!(),
         };
         match message {
-            GameInput::Message(from, message) => {
-                Self::handle(state, &mut self.player, from.into(), message)
-            }
+            GameInput::Message(from, message) => match Self::handle(state, from.into(), message) {
+                HandleResult::DrawError(e) => Err(e.into()),
+                HandleResult::RevealError(_, e) => Err(e.into()),
+                HandleResult::RequestError(e) => Err(e.into()),
+                HandleResult::TransferError(e) => Err(e.into()),
+                HandleResult::ReceivedWrongRank(rank) => {
+                    Err(format!("wrong rank, expected {rank}").into())
+                }
+
+                HandleResult::ReceivedCards(cards) => {
+                    self.player.receive(cards);
+                    Ok(())
+                }
+                HandleResult::None => Ok(()),
+            },
             GameInput::Reveal(card) => {
                 state
                     .drew(PlayerId::This, *card.position(), UnknownCard {})
