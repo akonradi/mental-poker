@@ -1,7 +1,13 @@
 [package]
 name = "mental-poker"
 version = "0.1.0"
+authors = ["Alex Konradi"]
 edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "A library for writing trustless card games"
+homepage = "https://github.com/akonradi/mental-poker"
+repository = "https://github.com/akonradi/mental-poker"
+readme = "README.md"
 
 [dependencies]
 derivative="2.2"
