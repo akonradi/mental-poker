@@ -3,6 +3,10 @@ use std::collections::{HashMap, HashSet};
 use mental_poker::game::log::LoggableGameType;
 use mental_poker::game::GameType;
 use mental_poker::game::InputMessageToken;
+use mental_poker::game::PrivateMessageToken;
+use mental_poker::game::PublicEvent;
+use mental_poker::game::PublicMessageToken;
+use mental_poker::game::RevealedMessageToken;
 use mental_poker::game::TurnOrderProvider;
 use mental_poker::OtherPlayerId;
 use mental_poker::{DeckPosition, PlayerId};
@@ -29,8 +33,29 @@ impl GameType for GoFish {
     type MessageParseError = GoFishParseError<InputMessageToken<GoFishDeck>>;
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum LoggedPlayerAction {
+    Draw,
+    Reveal(Vec<AttestedGoFishCard>),
+    Request { to: PlayerId, rank: Rank },
+    Transfer(PlayerId, Vec<AttestedGoFishCard>),
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum LoggedGameAction {
+    Game {
+        from: PlayerId,
+        action: LoggedPlayerAction,
+    },
+    RevealDrawn {
+        from: PlayerId,
+        to: PlayerId,
+        pos: DeckPosition<GoFishDeck>,
+    },
+}
+
 impl LoggableGameType for GoFish {
-    type GameEvent = GameAction<(PlayerId, Vec<AttestedGoFishCard>), PlayerId>;
+    type GameEvent = LoggedGameAction;
 }
 
 #[derive(Debug)]
@@ -713,6 +738,83 @@ impl From<GoFishAction<(OtherPlayerId, Vec<AttestedGoFishCard>), OtherPlayerId>>
             GoFishAction::Transfer((p, cards)) => {
                 GoFishAction::Transfer(TransferAction::ToOther(p, cards.len()))
             }
+        }
+    }
+}
+
+impl TryFrom<(PlayerId, PublicEvent<GoFishDeck>)> for LoggedGameAction {
+    type Error = GoFishParseError<RevealedMessageToken<GoFishDeck>>;
+
+    fn try_from((from, message): (PlayerId, PublicEvent<GoFishDeck>)) -> Result<Self, Self::Error> {
+        use LoggedPlayerAction::*;
+        use GoFishParseError::*;
+        use RevealedMessageToken::*;
+
+        type Pub = PublicMessageToken<GoFishDeck>;
+        type Priv = PrivateMessageToken<GoFishDeck>;
+
+        match message {
+            PublicEvent::Message(message) => {
+                let mut tokens = message.into_iter();
+
+                match tokens.next() {
+                    Some(Public(Pub::Value(0))) => match tokens.next() {
+                        None => Ok(Draw),
+                        Some(s) => Err(ExtraInput(s, tokens.collect())),
+                    },
+                    Some(Public(Pub::Value(1))) => tokens
+                        .try_fold(vec![], |mut v, item| match item {
+                            Public(Pub::AttestedCard(card)) => {
+                                v.push(card.into());
+                                Ok(v)
+                            }
+                            x => Err(x),
+                        })
+                        .map(Reveal)
+                        .map_err(|e| Unexpected(e, tokens.collect())),
+                    Some(Public(Pub::Value(2))) => match tokens.next() {
+                        Some(Public(Pub::Player(to))) => match tokens.next() {
+                            Some(r) => match r {
+                                Public(Pub::Value(rank)) => match tokens.next() {
+                                    Some(s) => Err(ExtraInput(s, tokens.collect())),
+                                    None => Ok(Request {
+                                        to,
+                                        rank: rank
+                                            .try_into()
+                                            .map_err(|_| ())
+                                            .and_then(|rank: u8| {
+                                                Rank::try_from(rank).map_err(|_| ())
+                                            })
+                                            .map_err(|_| Unexpected(r, tokens.collect()))?,
+                                    }),
+                                },
+                                s => Err(Unexpected(s, tokens.collect())),
+                            },
+                            None => Err(EndOfInput),
+                        },
+                        Some(s) => Err(Unexpected(s, tokens.collect())),
+                        None => Err(EndOfInput),
+                    },
+                    Some(Public(Pub::Value(3))) => match tokens.next() {
+                        Some(Public(Pub::Player(p))) => tokens
+                            .try_fold(vec![], |mut v, item| match item {
+                                Private(pp, Priv::AttestedCard(card)) if p == pp => {
+                                    v.push(card.into());
+                                    Ok(v)
+                                }
+                                x => Err(x),
+                            })
+                            .map(|cards| Transfer(p, cards))
+                            .map_err(|e| Unexpected(e, tokens.collect())),
+                        Some(s) => Err(Unexpected(s, tokens.collect())),
+                        None => Err(EndOfInput),
+                    },
+                    Some(x) => Err(Unexpected(x, tokens.collect())),
+                    None => Err(EndOfInput),
+                }
+            }
+            .map(|action| Self::Game { from, action }),
+            PublicEvent::Reveal(pos, to) => Ok(Self::RevealDrawn { from, to, pos }),
         }
     }
 }

@@ -21,9 +21,9 @@ use crate::{
     },
     game::{
         ActionError, DoneState, DrawError, DrewError, GameState, GoFish, GoFishState, Hand,
-        PlayerState, RequestError, RevealError, TransferError, TurnState,
+        LoggedGameAction, PlayerState, RequestError, RevealError, TransferError, TurnState, LoggedPlayerAction,
     },
-    message::{GameAction, GoFishAction, TransferAction},
+    message::{GoFishAction, TransferAction},
 };
 
 mod auto;
@@ -435,16 +435,16 @@ where
         for entry in finished_game.log() {
             let event = entry.map_err(|e| DecodeError(e.into()))?;
             match event {
-                GameAction::Game { from, action } => {
+                LoggedGameAction::Game { from, action } => {
                     info!("verifying from {:?}: {:?}", from, action);
                     match Into::into(action) {
-                        GoFishAction::Draw => game.draw(from)?,
-                        GoFishAction::Reveal(cards) => game.reveal(from, &cards)?,
-                        GoFishAction::Request { to, rank } => game.request(from, to, rank)?,
-                        GoFishAction::Transfer((to, cards)) => game.transfer(from, to, &cards)?,
+                        LoggedPlayerAction::Draw => game.draw(from)?,
+                        LoggedPlayerAction::Reveal(cards) => game.reveal(from, &cards)?,
+                        LoggedPlayerAction::Request { to, rank } => game.request(from, to, rank)?,
+                        LoggedPlayerAction::Transfer(to, cards) => game.transfer(from, to, &cards)?,
                     }
                 }
-                GameAction::RevealDrawn { from, to, pos } => {
+                LoggedGameAction::RevealDrawn { from, to, pos } => {
                     let draw = &mut draws[pos];
                     draw.extend([from, to]);
                     if draw.len() == game.players().count() {

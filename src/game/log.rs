@@ -148,10 +148,7 @@ where
         <C::Game as LoggableGameType>::GameEvent,
         <C::FinishedGame as GameMessageDecoder<C>>::DecodeError,
     >;
-    type LogIter<'a>
-    where
-        C: 'a,
-    = FinishedLogIter<'a, C>;
+    type LogIter<'a> = FinishedLogIter<'a, C> where C: 'a;
 
     fn log(&self) -> Self::LogIter<'_> {
         let it = self.log.iter();
@@ -325,9 +322,10 @@ mod tests {
         assert_eq!(send_result, Ok((PlayerId::This, Either::Left(17495))));
         assert_eq!(
             receive_result,
-            Ok(Some(
-                GameInput::Message(OtherPlayerId::new(4), FromIterator::from_iter([]),)
-            ))
+            Ok(Some(GameInput::Message(
+                OtherPlayerId::new(4),
+                FromIterator::from_iter([]),
+            )))
         );
         assert_eq!(
             reveal_result,

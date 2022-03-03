@@ -1,7 +1,7 @@
 #![allow(incomplete_features)]
 #![feature(step_trait)]
 #![feature(generic_const_exprs)]
-#![feature(generic_associated_types)]
+#![feature(impl_trait_in_assoc_type)]
 #![feature(type_alias_impl_trait)]
 #![cfg_attr(test, feature(generic_arg_infer))]
 

@@ -1,9 +1,8 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
-#![feature(generic_associated_types)]
+#![feature(impl_trait_in_assoc_type)]
 #![feature(associated_type_bounds)]
 #![feature(type_alias_impl_trait)]
-#![feature(bool_to_option)]
 #![feature(step_trait)]
 
 use log::{info, warn};
