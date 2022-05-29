@@ -74,74 +74,65 @@ impl TryFrom<InputMessage<GoFishDeck>> for GoFishAction<TransferAction, PlayerId
 
     fn try_from(message: InputMessage<GoFishDeck>) -> Result<Self, Self::Error> {
         use GoFishAction::*;
-        use GoFishParseError::*;
         use InputMessageToken::*;
 
         type Pub = PublicMessageToken<GoFishDeck>;
         type Priv = PrivateMessageToken<GoFishDeck>;
         type Hid = HiddenMessageToken;
 
-        let mut tokens = message.into_iter();
+        use combine::{choice, many, satisfy_map, token, EasyParser, ParseError, Parser};
 
-        match tokens.next() {
-            Some(Public(Pub::Value(0))) => match tokens.next() {
-                None => Ok(Draw),
-                Some(s) => Err(ExtraInput(s, tokens.collect())),
+        let draw = token(Public(Pub::Value(0))).map(|_| Draw);
+        let reveal = token(Public(Pub::Value(1))).with(
+            many(satisfy_map(|t| match t {
+                Public(Pub::AttestedCard(c)) => Some(AttestedGoFishCard::from(c)),
+                _ => None,
+            }))
+            .map(Reveal),
+        );
+        let request = token(Public(Pub::Value(2))).with(
+            satisfy_map(|t| match t {
+                Public(Pub::Player(p)) => Some(p),
+                _ => None,
+            })
+            .and(satisfy_map(|t| match t {
+                Public(Pub::Value(v)) => v.try_into().ok().and_then(|r: u8| r.try_into().ok()),
+                _ => None,
+            }))
+            .map(|(to, rank)| Request { to, rank }),
+        );
+        let response = token(Public(Pub::Value(3))).with(choice!(
+            token(Public(Pub::Player(PlayerId::This))).with(
+                many(satisfy_map(|t| match t {
+                    Private(Priv::AttestedCard(c)) => Some(AttestedGoFishCard::from(c)),
+                    _ => None,
+                }))
+                .map(|cards| Transfer(TransferAction::ToSelf(cards)))
+            ),
+            satisfy_map(|t| match t {
+                Public(Pub::Player(PlayerId::Other(o))) => Some(o),
+                _ => None,
+            })
+            .then(|o| many(token(Hidden(o, Hid::AttestedCard)).map(|_| ()))
+                .map(move |cards: Vec<()>| Transfer(TransferAction::ToOther(o, cards.len()))),)
+        ));
+
+        let tokens = message.into_iter().collect::<Vec<_>>();
+        match choice!(draw, reveal, request, response).easy_parse(&tokens[..]) {
+            Ok((t, remaining)) => match remaining.split_first() {
+                Some((front, rest)) => Err(GoFishParseError::ExtraInput(
+                    *front,
+                    rest.iter().cloned().collect(),
+                )),
+                None => Ok(t),
             },
-            Some(Public(Pub::Value(1))) => tokens
-                .try_fold(vec![], |mut v, item| match item {
-                    Public(Pub::AttestedCard(card)) => {
-                        v.push(card.into());
-                        Ok(v)
-                    }
-                    x => Err(x),
-                })
-                .map(Reveal)
-                .map_err(|e| Unexpected(e, tokens.collect())),
-            Some(Public(Pub::Value(2))) => match tokens.next() {
-                Some(Public(Pub::Player(to))) => match tokens.next() {
-                    Some(r) => match r {
-                        Public(Pub::Value(rank)) => match tokens.next() {
-                            Some(s) => Err(ExtraInput(s, tokens.collect())),
-                            None => Ok(Request {
-                                to,
-                                rank: rank
-                                    .try_into()
-                                    .map_err(|_| ())
-                                    .and_then(|rank: u8| Rank::try_from(rank).map_err(|_| ()))
-                                    .map_err(|_| Unexpected(r, tokens.collect()))?,
-                            }),
-                        },
-                        s => Err(Unexpected(s, tokens.collect())),
-                    },
-                    None => Err(EndOfInput),
-                },
-                Some(s) => Err(Unexpected(s, tokens.collect())),
-                None => Err(EndOfInput),
-            },
-            Some(Public(Pub::Value(3))) => match tokens.next() {
-                Some(Public(Pub::Player(PlayerId::This))) => tokens
-                    .try_fold(vec![], |mut v, item| match item {
-                        Private(Priv::AttestedCard(card)) => {
-                            v.push(card.into());
-                            Ok(v)
-                        }
-                        x => Err(x),
-                    })
-                    .map(|cards| Transfer(TransferAction::ToSelf(cards)))
-                    .map_err(|e| Unexpected(e, tokens.collect())),
-                Some(Public(Pub::Player(PlayerId::Other(p)))) => tokens
-                    .try_fold(0, |count, item| match item {
-                        Hidden(o, Hid::AttestedCard) if o == p => Ok(count + 1),
-                        x => Err(x),
-                    })
-                    .map(|count| Transfer(TransferAction::ToOther(p, count)))
-                    .map_err(|e| Unexpected(e, tokens.collect())),
-                Some(s) => Err(Unexpected(s, tokens.collect())),
-                None => Err(EndOfInput),
-            },
-            Some(x) => Err(Unexpected(x, tokens.collect())),
-            None => Err(EndOfInput),
+            Err(e) => Err(if e.is_unexpected_end_of_input() {
+                GoFishParseError::EndOfInput
+            } else {
+                let tokens = &tokens[e.position().translate_position(&tokens[..])..];
+                let (front, rest) = tokens.split_first().unwrap();
+                GoFishParseError::Unexpected(*front, rest.iter().cloned().collect())
+            }),
         }
     }
 }

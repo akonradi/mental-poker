@@ -22,11 +22,18 @@ pub(crate) struct Rank(u8);
 
 impl Rank {
     const MAX: u8 = 12;
-    pub fn all() -> impl Iterator<Item=Rank> {
+    pub fn all() -> impl Iterator<Item = Rank> {
         (0..=Self::MAX).map(Rank)
+    }
+
+    #[cfg(test)]
+    pub const fn test_new(rank: u8) -> Self {
+        assert!(rank <= Self::MAX);
+        Self(rank)
     }
 }
 
+#[derive(Debug)]
 pub(crate) enum RankParseError {
     Parse(<u8 as FromStr>::Err),
     OutOfBounds(u8),

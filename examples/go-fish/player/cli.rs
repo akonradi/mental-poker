@@ -1,22 +1,12 @@
-use std::io::Write;
+use std::{io::Write, str::FromStr};
 
+use combine::{
+    choice, easy, from_str, optional,
+    parser::{char::string, combinator::lazy, range::take_while1, repeat::sep_by1},
+    skip_many1, EasyParser, Parser,
+};
 use log::warn;
 
-use nom::{
-    branch::alt,
-    bytes::complete::tag,
-    character::complete::{digit1, one_of, space1},
-    combinator::{map, map_res},
-    multi::{many1, separated_list0},
-    sequence::{separated_pair, tuple},
-    Finish, IResult,
-};
-
-use crate::{
-    cards::GoFishDeck,
-    game::{DealState, GameState, Hand, TurnState},
-    player::{OtherPlayers, PlayerHand},
-};
 use mental_poker::{
     game::AttestedCard,
     game::CardGame,
@@ -24,19 +14,48 @@ use mental_poker::{
 };
 
 use crate::{
-    cards::UnknownCard,
-    cards::{AttestedGoFishCard, Rank},
-    game::GoFishState,
+    cards::{AttestedGoFishCard, GoFishDeck, Rank, UnknownCard},
+    game::{DealState, GameState, GoFishState, Hand, TurnState},
     message::GoFishAction,
+    player::{OtherPlayers, PlayerAction, PlayerActionError, PlayerHand, PlayerImpl},
 };
-
-use super::{PlayerAction, PlayerActionError, PlayerImpl};
 
 pub(crate) struct CliPlayer {
     index: u8,
     hand: Hand<AttestedGoFishCard>,
 }
 
+struct RankFromStr(Rank);
+
+#[derive(thiserror::Error, Debug)]
+enum RankFromStrErr {
+    #[error("Invalid u8: {0}")]
+    Parse(<u8 as FromStr>::Err),
+    #[error("Not a valid rank: {0}")]
+    Bound(<Rank as TryFrom<u8>>::Error),
+}
+
+impl FromStr for RankFromStr {
+    type Err = RankFromStrErr;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        u8::from_str(s)
+            .map_err(RankFromStrErr::Parse)
+            .and_then(|u| {
+                Rank::try_from(u)
+                    .map(RankFromStr)
+                    .map_err(RankFromStrErr::Bound)
+            })
+    }
+}
+
+impl From<RankFromStr> for Rank {
+    fn from(RankFromStr(r): RankFromStr) -> Self {
+        r
+    }
+}
+
+#[cfg_attr(test, derive(Debug, Eq, PartialEq))]
 enum Action {
     Draw,
     Reveal(Vec<u8>),
@@ -46,51 +65,37 @@ enum Action {
 }
 
 impl CliPlayer {
-    fn parse_action(s: &str) -> Result<(&str, Action), nom::error::Error<&str>> {
-        fn parse_u8(s: &str) -> IResult<&str, u8> {
-            map_res(digit1, |s: &str| s.parse())(s)
-        }
-        fn cards_list(s: &str) -> IResult<&str, Vec<u8>> {
-            separated_list0(many1(one_of(", ")), parse_u8)(s)
-        }
-        fn rank(s: &str) -> IResult<&str, Rank> {
-            map_res(parse_u8, |r| Rank::try_from(r))(s)
-        }
-
-        let draw = map(tag("draw"), |_| Action::Draw);
-        let reveal = alt((
-            map(
-                separated_pair(tag("reveal"), space1, cards_list),
-                |(_, b)| Action::Reveal(b),
-            ),
-            map(tag("reveal"), |_| Action::Reveal(vec![])),
-        ));
-        let ask = map(
-            tuple((
-                tag("ask"),
-                space1,
-                parse_u8,
-                space1,
-                tag("for"),
-                space1,
-                rank,
-            )),
-            |(_, _, a, _, _, _, b)| Action::Ask(a, b),
-        );
-        let send = map(
-            tuple((
-                tag("send"),
-                space1,
-                alt((map(tag("none"), |_| vec![]), cards_list)),
-                nom::combinator::opt(map(
-                    tuple((space1, tag("to"), space1, parse_u8)),
-                    |(_, _, _, u)| u,
-                )),
-            )),
-            |(_, _, a, b)| Action::Send(b, a),
-        );
-        let allow = map(tag("allow"), |_| Action::Allow);
-        alt((draw, reveal, ask, send, allow))(s).finish()
+    fn parse_action(s: &str) -> Result<(Action, &str), easy::ParseError<&str>> {
+        let parse_u8 = || from_str::<_, u8, _>(take_while1(|c: char| c.is_digit(10)));
+        let parse_rank =
+            || from_str::<_, RankFromStr, _>(take_while1(|c: char| c.is_digit(10))).map(Into::into);
+        let u8_list = || sep_by1(parse_u8(), choice!(string(", "), string(",")));
+        let some_space = || skip_many1(string(" "));
+        let draw = string("draw").map(|_| Action::Draw);
+        let reveal = string("reveal").then(|_| {
+            optional(some_space().with(lazy(u8_list)))
+                .map(|cards| Action::Reveal(cards.unwrap_or(vec![])))
+        });
+        let ask = string("ask")
+            .skip(some_space())
+            .and(parse_u8())
+            .skip(some_space())
+            .skip(string("for"))
+            .skip(some_space())
+            .and(parse_rank())
+            .map(|((_, to), r)| Action::Ask(to, r));
+        let send = string("send")
+            .skip(some_space())
+            .and(choice!(string("none").map(|_| vec![]), u8_list()))
+            .and(optional(
+                some_space()
+                    .skip(string("to"))
+                    .skip(some_space())
+                    .with(parse_u8()),
+            ))
+            .map(|((_, cards), player)| Action::Send(player, cards));
+        let allow = string("allow").map(|_| Action::Allow);
+        choice!(draw, reveal, ask, allow, send).easy_parse(s)
     }
 
     fn parse_one_line(
@@ -99,7 +104,7 @@ impl CliPlayer {
         input: &str,
     ) -> Result<PlayerAction, Box<dyn std::error::Error>> {
         let parsed = match Self::parse_action(input) {
-            Ok(p) => p.1,
+            Ok((action, _)) => action,
             Err(e) => return Err(format!("failed to parse {}", e).into()),
         };
         match parsed {
@@ -282,5 +287,28 @@ impl CliPlayer {
             hand: Default::default(),
             index: i,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use test_case::test_case;
+
+    use super::*;
+
+    const RANK_5: Rank = Rank::test_new(5);
+
+    #[test_case("send 5" => Action::Send(None, vec![5]))]
+    #[test_case("send 5 to 4" => Action::Send(Some(4), vec![5]))]
+    #[test_case("send 5, 3" => Action::Send(None, vec![5, 3]))]
+    #[test_case("send 2, 3, 4 to 9" => Action::Send(Some(9), vec![2, 3, 4]))]
+    #[test_case("ask 3 for 5s" => Action::Ask(3, RANK_5))]
+    #[test_case("draw" => Action::Draw)]
+    #[test_case("reveal 3, 4" => Action::Reveal(vec![3, 4]))]
+    #[test_case("reveal 2" => Action::Reveal(vec![2]))]
+    #[test_case("ask 4 for 5s" => Action::Ask(4, RANK_5))]
+    fn parse_valid_action(line: &str) -> Action {
+        let (action, _) = CliPlayer::parse_action(line).unwrap();
+        action
     }
 }
