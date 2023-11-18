@@ -6,6 +6,7 @@ use std::{
 };
 
 use ::log::{info, trace, warn};
+use derive_where::derive_where;
 use rand::seq::SliceRandom;
 use sha2::{digest::generic_array, Digest, Sha256};
 use thiserror::Error;
@@ -22,8 +23,7 @@ use crate::{
 
 use super::{PublicEvent, RevealedMessage};
 
-#[derive(derivative::Derivative)]
-#[derivative(Debug, Clone)]
+#[derive_where(Debug, Clone)]
 enum Token<G: GameType>
 where
     [(); G::Deck::SIZE]:,
@@ -34,8 +34,7 @@ where
     PrivateAttestedCard(<Game<G> as CardGame>::UniqueId, AttestedCard<G::Deck>),
 }
 
-#[derive(derivative::Derivative)]
-#[derivative(Debug)]
+#[derive_where(Debug)]
 pub struct PlayerMessage<G: GameType>(Vec<Token<G>>)
 where
     [(); G::Deck::SIZE]:;
@@ -49,7 +48,8 @@ where
     }
 }
 
-#[derive(Copy, Clone, Debug, Error)]
+#[derive(Error)]
+#[derive_where(Copy, Clone, Debug; ID: Copy + Debug)]
 pub enum PlayerMessageError<ID, D: DeckType> {
     #[error("unknown player ID {0}")]
     UnknownPlayer(ID),
@@ -176,8 +176,7 @@ where
     }
 }
 
-#[derive(derivative::Derivative)]
-#[derivative(Debug)]
+#[derive_where(Debug)]
 pub enum GameMessage<G: GameType, C: CardGame>
 where
     [(); G::Deck::SIZE]:,
@@ -304,13 +303,15 @@ impl<'s> TurnOrderProvider for &'s Bootstrap {
     }
 }
 
-#[derive(Debug, Error)]
+#[derive(Error)]
+#[derive_where(Debug)]
 pub enum GameOutputError<D: DeckType> {
     #[error("failed to encode token at {0}: {1:?}")]
     EncodeError(usize, PlayerMessageError<OtherPlayerId, D>),
 }
 
-#[derive(Debug, Error)]
+#[derive(Error)]
+#[derive_where(Debug)]
 pub enum GameInputError<G: GameType>
 where
     <G::Message as TryFrom<InputMessage<G::Deck>>>::Error: Debug + std::error::Error,

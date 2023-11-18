@@ -1,13 +1,13 @@
 use std::marker::PhantomData;
 
+use derive_where::derive_where;
+
 /// The type of a deck.
 ///
 /// Implementations of this trait define the type of a deck. A deck has `SIZE`
 /// cards, all unique. Types that implement `DeckType` do not need to be
 /// instantiatable; they are used only as markers.
-pub trait DeckType:
-    std::fmt::Debug + Copy + Clone + Eq + PartialEq + PartialOrd + std::hash::Hash
-{
+pub trait DeckType {
     const SIZE: usize;
 }
 
@@ -17,15 +17,14 @@ pub trait DeckType:
 /// DeckType`. Cards within a deck have values in the range [0, D::SIZE-1].
 /// Custom traits can be used to attach additional information to a card, like
 /// "suit" or "rank", derived from the card's index.
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
+#[derive_where(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct Card<DeckType>(u16, PhantomData<DeckType>);
 
 /// A position within a shuffled deck of cards.
 ///
 /// A `DeckPosition<D>` represents an index into a shuffled list of cards who
 /// are members of a deck `D : DeckType`.
-#[derive(derivative::Derivative)]
-#[derivative(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
+#[derive_where(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct DeckPosition<DeckType>(usize, PhantomData<DeckType>);
 
 impl<D: DeckType> Card<D> {

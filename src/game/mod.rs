@@ -4,6 +4,8 @@ pub mod trusting;
 
 use std::fmt::Debug;
 
+use derive_where::derive_where;
+
 use crate::deck::*;
 use crate::*;
 pub use message::*;
@@ -14,7 +16,7 @@ pub use message::*;
 /// Where [`Card<D>`] allows one to name a specific card in the deck, an
 /// instance of `AttestedCard<D>` can only be provided if the value of the card
 /// was revealed by players.
-#[derive(Eq, PartialEq, Copy, Clone, Debug, Hash)]
+#[derive_where(Eq, PartialEq, Copy, Clone, Debug, Hash)]
 pub struct AttestedCard<D>(Card<D>);
 
 /// A card whose value and position in a shuffled deck are known and unforgeable.

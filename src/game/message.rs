@@ -1,6 +1,8 @@
 use std::{hash::Hash, ops::Index};
 
 extern crate derive_more;
+use derive_where::derive_where;
+
 use crate::*;
 
 use super::AttestedCard;
@@ -23,7 +25,7 @@ pub enum PublicMessageToken<D: DeckType, P = PlayerId> {
 }
 
 /// A token that, when it appears in a message, is visible to only one player.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive_where(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum PrivateMessageToken<D: DeckType> {
     /// Encodes the value of a card and any information requried to prove to
     /// other players that the value was previously revealed to the local
