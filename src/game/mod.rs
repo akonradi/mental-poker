@@ -142,9 +142,9 @@ pub trait CardGame {
         action: <Self::Game as GameType>::Action,
     ) -> Result<Self::GameMessage, Self::OutputError>;
 
-    /// Called by the game client when a new messsage is received from other clients.
+    /// Called by the game client when a new message is received from other clients.
     ///
-    /// Returns input from a peer client, or any procesing error that arises.
+    /// Returns input from a peer client, or any processing error that arises.
     /// Not all accepted inputs produce an output, in which case `Ok(None)` is
     /// returned.
     fn receive(

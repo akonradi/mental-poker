@@ -27,7 +27,7 @@ pub enum PublicMessageToken<D: DeckType, P = PlayerId> {
 /// A token that, when it appears in a message, is visible to only one player.
 #[derive_where(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum PrivateMessageToken<D: DeckType> {
-    /// Encodes the value of a card and any information requried to prove to
+    /// Encodes the value of a card and any information required to prove to
     /// other players that the value was previously revealed to the local
     /// player.
     AttestedCard(AttestedCard<D>),
@@ -45,7 +45,7 @@ pub enum OutputMessageToken<D: DeckType> {
 /// A complete output message.
 ///
 /// All client game messages must be representable as a sequence of
-/// [`OutputMessageToken`]s, ecapsulated as an `OutputMessage`.
+/// [`OutputMessageToken`]s, encapsulated as an `OutputMessage`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OutputMessage<D: DeckType>(Vec<OutputMessageToken<D>>);
 

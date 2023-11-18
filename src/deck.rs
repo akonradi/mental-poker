@@ -6,7 +6,7 @@ use derive_where::derive_where;
 ///
 /// Implementations of this trait define the type of a deck. A deck has `SIZE`
 /// cards, all unique. Types that implement `DeckType` do not need to be
-/// instantiatable; they are used only as markers.
+/// instantiable; they are used only as markers.
 pub trait DeckType {
     const SIZE: usize;
 }

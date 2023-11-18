@@ -267,12 +267,12 @@ impl Bootstrap {
             keys.sort_by(|a, b| a.cmp(b));
             keys
         };
-        let mut hasher = Sha256::new();
+        let mut hash = Sha256::new();
         for key in sorted_keys {
-            hasher.update(key.to_le_bytes());
+            hash.update(key.to_le_bytes());
         }
         let mut seed = <<rand::rngs::StdRng as rand::SeedableRng>::Seed as Default>::default();
-        hasher.finalize_into(generic_array::GenericArray::from_mut_slice(&mut seed));
+        hash.finalize_into(generic_array::GenericArray::from_mut_slice(&mut seed));
         let mut rng = <rand::rngs::StdRng as rand::SeedableRng>::from_seed(seed);
         let mut shuffled_cards = Card::<G::Deck>::all().map(AttestedCard);
         shuffled_cards.shuffle(&mut rng);
