@@ -1,6 +1,5 @@
 use std::{hash::Hash, ops::Index};
 
-extern crate derive_more;
 use derive_where::derive_where;
 
 use crate::*;
