@@ -17,15 +17,15 @@ pub trait DeckType {
 /// DeckType`. Cards within a deck have values in the range [0, D::SIZE-1].
 /// Custom traits can be used to attach additional information to a card, like
 /// "suit" or "rank", derived from the card's index.
-#[derive_where(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
-pub struct Card<DeckType>(u16, PhantomData<DeckType>);
+#[derive_where(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Debug)]
+pub struct Card<DeckType>(u16, #[derive_where(skip(Debug))] PhantomData<DeckType>);
 
 /// A position within a shuffled deck of cards.
 ///
 /// A `DeckPosition<D>` represents an index into a shuffled list of cards who
 /// are members of a deck `D : DeckType`.
-#[derive_where(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
-pub struct DeckPosition<DeckType>(usize, PhantomData<DeckType>);
+#[derive_where(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Debug)]
+pub struct DeckPosition<DeckType>(usize, #[derive_where(skip(Debug))] PhantomData<DeckType>);
 
 impl<D: DeckType> Card<D> {
     /// Creates a new card with the given value.
@@ -150,18 +150,6 @@ impl<T, D: DeckType> std::ops::Index<DeckPosition<D>> for [T; D::SIZE] {
 impl<T, D: DeckType> std::ops::IndexMut<DeckPosition<D>> for [T; D::SIZE] {
     fn index_mut(&mut self, position: DeckPosition<D>) -> &mut Self::Output {
         &mut self[position.0]
-    }
-}
-
-impl<D> std::fmt::Debug for Card<D> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("Card").field(&self.0).finish()
-    }
-}
-
-impl<D> std::fmt::Debug for DeckPosition<D> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("DeckPosition").field(&self.0).finish()
     }
 }
 
